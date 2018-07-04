@@ -2,15 +2,25 @@
 
 import datetime
 import json
+import os
 import re
 import sys
+import time
 import urllib.request
 import urllib.parse
 
 
 class NullDisplay(object):
-    @staticmethod
-    def debug(*args, **kwargs):
+    def enable_debug(self):
+        pass
+
+    def debug(self, *args, **kwargs):
+        pass
+
+    def print(self, *args, **kwargs):
+        pass
+
+    def fatal(self, *args, **kwargs):
         pass
 
 
@@ -44,8 +54,49 @@ class TerminalDisplay(object):
                "\033[{0}m".format(";".join([str(f) for f in formats]))
 
 
+class FileLogger(object):
+    def __init__(self, filename, decorated=None):
+        self.__filename = filename
+        self.__file = None
+        self.__decorated = decorated or NullLogger()
+
+    def __enter__(self):
+        self.__file = open(self.__filename, 'w')
+
+    def __exit__(self, type, value, traceback):
+        if self.__file is not None:
+            close(self.__file)
+
+    def __write(self, level, *args, **kwargs):
+        if self.__file is None:
+            self.__enter__()
+
+        log = "{0} [{1:>3}]  {2}".format(time.strftime("%Y-%m-%d %H:%M:%S"), level, ' '.join(args))
+
+        if kwargs:
+            log = "{0} {1}".format(log, str(kwargs))
+
+        self.__file.write(log + "\n")
+
+    def enable_debug(self):
+        self.__write("", "enabling debug")
+        self.__decorated.enable_debug()
+
+    def debug(self, *args, **kwargs):
+        self.__write("dbg", *args, **kwargs)
+        self.__decorated.debug(*args, **kwargs)
+
+    def print(self, *args, **kwargs):
+        self.__write("inf", *args, **kwargs)
+        self.__decorated.print(*args, **kwargs)
+
+    def fatal(self, *args, **kwargs):
+        self.__write("err", *args, **kwargs)
+        self.__decorated.fatal(*args, **kwargs)
+
+
 class Website(object):
-    def __init__(self, url, display=NullDisplay):
+    def __init__(self, url, display=NullDisplay()):
         self.__url = url
         self.__display = display
 
@@ -105,7 +156,7 @@ class PkpTimetable(object):
         "&time={time}&REQ0JourneyTime={time}" \
         "&REQ0HafasSearchForw=1&existBikeEverywhere=yes&existHafasAttrInc=yes&existHafasAttrInc=yes&REQ0JourneyProduct_prod_section_0_0=1&REQ0JourneyProduct_prod_section_1_0=1&REQ0JourneyProduct_prod_section_2_0=1&REQ0JourneyProduct_prod_section_3_0=1&REQ0JourneyProduct_prod_section_0_1=1&REQ0JourneyProduct_prod_section_1_1=1&REQ0JourneyProduct_prod_section_2_1=1&REQ0JourneyProduct_prod_section_3_1=1&REQ0JourneyProduct_prod_section_0_2=1&REQ0JourneyProduct_prod_section_1_2=1&REQ0JourneyProduct_prod_section_2_2=1&REQ0JourneyProduct_prod_section_3_2=1&REQ0JourneyProduct_prod_section_0_3=1&REQ0JourneyProduct_prod_section_1_3=1&REQ0JourneyProduct_prod_section_2_3=1&REQ0JourneyProduct_prod_section_3_3=1&REQ0JourneyProduct_opt_section_0_list=0:000000&existOptimizePrice=1&existHafasAttrExc=yes&REQ0HafasChangeTime=0:1&existSkipLongChanges=0&REQ0HafasAttrExc=&REQ0HafasAttrExc=&REQ0HafasAttrExc=&REQ0HafasAttrExc=&REQ0HafasAttrExc=&REQ0HafasAttrExc=&REQ0HafasAttrExc=&REQ0HafasAttrExc=&REQ0HafasAttrExc=&REQ0HafasAttrExc=&REQ0HafasAttrExc=&REQ0HafasAttrExc=&existHafasAttrInc=yes&existHafasAttrExc=yes&wDayExt0=Pn|Wt|%C5%9Ar|Cz|Pt|So|Nd&start=start&existUnsharpSearch=yes&came_from_form=1#focus"
 
-    def __init__(self, url="http://rozklad-pkp.pl/", display=NullDisplay):
+    def __init__(self, url="http://rozklad-pkp.pl/", display=NullDisplay()):
         self.__site = Website(url, display)
         self.__display = display
 
@@ -133,7 +184,7 @@ class PkpTimetable(object):
 class Application(object):
     def __init__(self, executable, arguments, display=TerminalDisplay()):
         self.__executable = executable or self.__class__.__name__
-        self.__display = display
+        self.__display = FileLogger(self.__executable + ".log", display)
 
         if "--debug" in arguments:
             self.__display.enable_debug()
@@ -141,7 +192,7 @@ class Application(object):
 
         self.__operation = arguments[0] if arguments and len(arguments) > 0 else "help"
         self.__arguments = arguments[1:] if arguments and len(arguments) > 1 else list()
-        self.__timetable = PkpTimetable(display=display)
+        self.__timetable = PkpTimetable(display=self.__display)
 
         if self.__operation == "-h" or self.__operation == "--help" or "--help" in arguments or "-h" in arguments:
             self.__operation = "help"
