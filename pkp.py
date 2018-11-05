@@ -26,8 +26,14 @@ class NullDisplay(object):
 
 class TerminalDisplay(object):
     RESET = 0
+    BOLD = 1
     RED = 31
+    GREEN = 32
+    YELLOW = 33
+    BLUE = 34
+    MAGENTA = 35
     GRAY = 37
+    WHITE = 97
 
     def __init__(self):
         self.__debug = False
@@ -52,6 +58,11 @@ class TerminalDisplay(object):
     def __format(self, *formats):
         return "" if len(formats) < 1 else \
                "\033[{0}m".format(";".join([str(f) for f in formats]))
+
+    def format(self, what, formats=None):
+        if not formats:
+            return what
+        return self.__format(*formats) + what + self.__format(self.RESET)
 
 
 class FileLogger(object):
@@ -120,11 +131,42 @@ class PkpStation(object):
         return str(self)
 
 
+class Train(object):
+    def __init__(self, name):
+        whitespaces = re.compile(r'\W+')
+        parts = whitespaces.sub(' ', name).strip().split(' ')
+
+        if len(parts) == 1:
+            parts = re.split('(\d+)', parts[0])
+
+        self.__type = parts[0]
+        self.__name = ' '.join(parts[1:]) if len(parts) > 1 else ''
+
+    def __str__(self):
+        return self.__type + self.__name
+
+    def __repr__(self):
+        return str(self)
+
+    def rich(self, display):
+        if self.__type == "KD":
+            return display.format(self.__type, [display.YELLOW, display.BOLD]) + self.__name
+        if self.__type == "R" or self.__type == "L":
+            return display.format(self.__type, [display.RED, display.BOLD]) + self.__name
+        if self.__type == "KS" or self.__type == "KML":
+            return display.format(self.__type, [display.BLUE, display.BOLD]) + self.__name
+        if self.__type == "IC" or self.__type == "EIC" or self.__type == "TLK" or self.__type == "EIP":
+            return display.format(self.__type, [display.MAGENTA, display.BOLD]) + self.__name
+        if self.__type == "KM":
+            return display.format(self.__type, [display.GREEN, display.BOLD]) + self.__name
+        return display.format(self.__type, [display.WHITE, display.BOLD]) + self.__name
+
+
 class PkpJourney(object):
     def __init__(self, match):
         self.departure = match[0]
         self.arrival = match[1]
-        self.trains = [t.replace(' ', '') for t in re.findall(r'<img .*?alt="(.*?)".*?>', match[2])]
+        self.trains = [Train(t) for t in re.findall(r'<img .*?alt="(.*?)".*?>', match[2])]
 
     def train(self):
         return self.trains[0] if len(self.trains) > 0 else ""
@@ -235,7 +277,7 @@ class Application(object):
         self.__display.print("---")
 
         for c in connections:
-            self.__display.print("{0} → {2}  {1}".format(c.departure, ", ".join(c.trains), c.arrival))
+            self.__display.print("{0} → {2}  {1}".format(c.departure, ", ".join([str(t) for t in c.trains]), c.arrival))
 
     def __help(self):
         self.__display.print(
