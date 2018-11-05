@@ -23,12 +23,31 @@ python3 pkp.py connection 5104120 5104134
 ```
 which should result in:
 ```
+Suggested departure:
+04:39 → 04:53  R66941
+
+Alternatives:
+05:04 → 05:18  KD69900
+05:47 → 06:00  R60561
+```
+where on each line in both sections there is the departure and arrival times of the train(s), and their respective number(s).
+
+## Argos
+
+The script is able to generate an output compatible with [Argos](https://github.com/p-e-w/argos) extension for GNOME Shell. To enable it use the `--argos` command line option:
+```
+python3 pkp.py --argos connection 5104120 5104134
+```
+This will produce an output as following:
+```
 04:39 R66941
 ---
-22:28 → 22:42  KD69930
 04:39 → 04:53  R66941
 05:04 → 05:18  KD69900
 05:47 → 06:00  R60561
 ```
-where the first line is the next departure from the chosen station and number of the train.
+
+## Debug
+
+Displaying debug logs on screen may be enabled with `--debug` command line option. The script should also try to dump debug logs to `pkp.py.log` file on each run.
 
