@@ -224,14 +224,69 @@ class PkpTimetable(object):
         return connections[1] if len(connections) > 1 else None
 
 
+class TextualInterface(object):
+    def __init__(self, display):
+        self.__display = display
+
+    def fail(self, text):
+        self.__display.fatal(text)
+
+    def error(self, text):
+        self.__display.fatal(text)
+
+    def show_stations(self, stations):
+        self.__display.print("\n".join([str(s) for s in stations]))
+
+    def show_connection(self, suggested, alternatives):
+        self.__display.print("Suggested departure:")
+        self.__display.print("{0} → {1}  {2}".format(suggested.departure, suggested.arrival, ", ".join([t.rich(self.__display) for t in suggested.trains])))
+
+        self.__display.print("\nAlternatives:")
+        for c in alternatives:
+            self.__display.print("{0} → {1}  {2}".format(c.departure, c.arrival, ", ".join([t.rich(self.__display) for t in c.trains])))
+
+
+class ArgosInterface(object):
+    def __init__(self, display):
+        self.__display = display
+
+    def fail(self, text):
+        self.__display.fatal("Failed")
+        self.__display.print("---")
+        self.__display.fatal(text)
+
+    def error(self, text):
+        self.__display.fatal("Error")
+        self.__display.print("---")
+        self.__display.fatal(text)
+
+    def show_stations(self, stations):
+        self.__display.print("Stations")
+        self.__display.print("---")
+        self.__display.print("\n".join([str(s) for s in stations]))
+
+    def show_connection(self, suggested, alternatives):
+        self.__display.print("{0} {1}".format(suggested.departure, suggested.train()))
+        self.__display.print("---")
+
+        self.__display.print("{0} → {1}  {2}".format(suggested.departure, suggested.arrival, ", ".join([t.rich(self.__display) for t in suggested.trains])))
+        for c in alternatives:
+            self.__display.print("{0} → {1}  {2}".format(c.departure, c.arrival, ", ".join([t.rich(self.__display) for t in c.trains])))
+
+
 class Application(object):
     def __init__(self, executable, arguments, display=TerminalDisplay()):
         self.__executable = executable or self.__class__.__name__
         self.__display = FileLogger(self.__executable + ".log", display)
+        self.__ui = TextualInterface(display)
 
         if "--debug" in arguments:
             self.__display.enable_debug()
             arguments.remove("--debug")
+
+        if "--argos" in arguments:
+            self.__ui = ArgosInterface(display)
+            arguments.remove("--argos")
 
         self.__operation = arguments[0] if arguments and len(arguments) > 0 else "help"
         self.__arguments = arguments[1:] if arguments and len(arguments) > 1 else list()
@@ -244,28 +299,29 @@ class Application(object):
         operation = "run_" + self.__operation
 
         if not hasattr(self, operation):
-            self.__display.fatal("Operation not supported: {0}".format(self.__operation))
+            self.__ui.error("Operation not supported: {0}".format(self.__operation))
             return
 
         try:
             getattr(self, operation)()
         except Exception as e:
-            self.__display.fatal("Operation failed: {0}".format(self.__operation))
+            self.__ui.fail("Operation failed: {0}".format(self.__operation))
             self.__display.debug(str(e))
+            self.__display.debug("Http proxy used: {0}".format(os.environ.get('http_proxy')))
 
     def run_help(self):
         self.__help()
 
     def run_station(self):
         if len(self.__arguments) < 1:
-            self.__display.fatal("Please provide requested station name")
+            self.__ui.error("Please provide requested station name")
             return
 
-        self.__display.print("\n".join([str(e) for e in self.__timetable.stations(self.__arguments[0])]))
+        self.__ui.show_stations(self.__timetable.stations(self.__arguments[0]))
 
     def run_connection(self):
         if len(self.__arguments) < 2:
-            self.__display.fatal("Please provide two station ids (from and to)")
+            self.__ui.error("Please provide two station ids (from and to)")
             return
 
         now = datetime.datetime.now()
@@ -273,11 +329,7 @@ class Application(object):
         time = now.strftime("%H:%M")
         connections = self.__timetable.connections(self.__arguments[0], self.__arguments[1], date, time)
 
-        self.__display.print("{0} {1}".format(connections[1].departure, connections[1].train()))
-        self.__display.print("---")
-
-        for c in connections:
-            self.__display.print("{0} → {2}  {1}".format(c.departure, ", ".join([str(t) for t in c.trains]), c.arrival))
+        self.__ui.show_connection(connections[1], connections[2:])
 
     def __help(self):
         self.__display.print(
@@ -291,6 +343,10 @@ class Application(object):
                 "               needs one parameter: station name pattern",
                 "  connection : looks for closest departure between given station ids",
                 "               needs two parameters: from_id to_id",
+                "",
+                "Available options",
+                "  --argos    : enables output html decoration",
+                "  --debug    : enables debug mode",
                 sep='\n')
 
 
